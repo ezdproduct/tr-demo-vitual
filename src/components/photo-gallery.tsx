@@ -22,6 +22,8 @@ interface PhotoGalleryProps {
   onDeletePhoto: (id: string) => void;
   onClearAll: () => void;
   onAddPhoto: (photo: Photo) => void;
+  isBeautifying: boolean;
+  onBeautify: (photo: Photo) => Promise<Photo | null>;
 }
 
 export function PhotoGallery({
@@ -31,9 +33,10 @@ export function PhotoGallery({
   onDeletePhoto,
   onClearAll,
   onAddPhoto,
+  isBeautifying,
+  onBeautify,
 }: PhotoGalleryProps) {
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
-  const [isBeautifying, setIsBeautifying] = useState(false);
 
   const copyToClipboard = (url: string) => {
     navigator.clipboard.writeText(url)
@@ -46,43 +49,9 @@ export function PhotoGallery({
   };
 
   const handleBeautify = async (photo: Photo) => {
-    setIsBeautifying(true);
-    try {
-      const res = await fetch('/api/beautify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: photo.dataUrl })
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        if (data.needsConfig) {
-          toast.error('OpenAI API key is not configured. Please add OPENAI_API_KEY to your .env.local file.', {
-            duration: 6000
-          });
-        } else {
-          toast.error(data.error || 'AI Beautification failed.');
-        }
-        return;
-      }
-
-      // Create new photo item
-      const newPhoto: Photo = {
-        id: Date.now().toString(),
-        dataUrl: data.image,
-        timestamp: Date.now(),
-        isBeautified: true,
-        uploadStatus: 'uploading'
-      };
-
-      onAddPhoto(newPhoto);
+    const newPhoto = await onBeautify(photo);
+    if (newPhoto) {
       setSelectedPhoto(newPhoto); // Focus on the new beautified photo!
-      toast.success('AI Beautification completed! Saving to gallery...');
-    } catch (err) {
-      console.error('Beautify error:', err);
-      toast.error('An error occurred during AI processing.');
-    } finally {
-      setIsBeautifying(false);
     }
   };
 
@@ -310,22 +279,6 @@ export function PhotoGallery({
                 Delete Photo
               </Button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* AI Beautifying Loader Overlay */}
-      {isBeautifying && (
-        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center text-white gap-4 text-center">
-          <div className="relative flex items-center justify-center h-20 w-20">
-            <Sparkles className="h-10 w-10 text-amber-400 animate-pulse" />
-            <div className="absolute inset-0 border-4 border-amber-500/20 border-t-amber-400 rounded-full animate-spin" />
-          </div>
-          <div className="space-y-1 px-6">
-            <h3 className="font-bold text-sm tracking-widest text-amber-400 uppercase">AI is beautifying photo</h3>
-            <p className="text-xs text-neutral-400 max-w-xs leading-relaxed">
-              GPT-4o is analyzing composition and DALL-E 3 is re-rendering the scene. This will take 10-20 seconds...
-            </p>
           </div>
         </div>
       )}

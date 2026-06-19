@@ -80,6 +80,8 @@ export default function Home() {
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
   const [imageScale, setImageScale] = useState<number>(0.65);
   const [activeGuideIndex, setActiveGuideIndex] = useState<number>(0);
+  const [autoBeautify, setAutoBeautify] = useState<boolean>(true);
+  const [isBeautifying, setIsBeautifying] = useState<boolean>(false);
   
   // Alignment & Capture states
   const [isAligned, setIsAligned] = useState<boolean>(false);
@@ -161,6 +163,88 @@ export default function Home() {
       clearTimeout(captureTimeout);
     };
   }, [isAligned, autoCapture, cameraError]);
+
+  const handleBeautify = async (photo: Photo): Promise<Photo | null> => {
+    setIsBeautifying(true);
+    try {
+      const res = await fetch('/api/beautify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: photo.dataUrl })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.needsConfig) {
+          toast.error('OpenAI API key is not configured. Please add OPENAI_API_KEY to your .env.local file.', {
+            duration: 6000
+          });
+        } else {
+          toast.error(data.error || 'AI Beautification failed.');
+        }
+        return null;
+      }
+
+      // Create new photo item
+      const newPhoto: Photo = {
+        id: Date.now().toString(),
+        dataUrl: data.image,
+        timestamp: Date.now(),
+        isBeautified: true,
+        uploadStatus: 'uploading'
+      };
+
+      setPhotos(prev => {
+        const updated = [newPhoto, ...prev.slice(0, 11)];
+        localStorage.setItem('captured_photos', JSON.stringify(updated));
+        return updated;
+      });
+
+      toast.success('AI Beautification completed! Saving to gallery...');
+
+      // Upload the beautified photo to R2 in the background
+      fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: newPhoto.dataUrl })
+      })
+        .then(res => {
+          if (!res.ok) throw new Error('R2 upload failed');
+          return res.json();
+        })
+        .then(data => {
+          setPhotos(prev => {
+            const updated = prev.map(p => 
+              p.id === newPhoto.id 
+                ? { ...p, r2Url: data.publicUrl, uploadStatus: 'completed' as const } 
+                : p
+            );
+            localStorage.setItem('captured_photos', JSON.stringify(updated));
+            return updated;
+          });
+        })
+        .catch(err => {
+          console.error('Failed to upload beautified image to R2:', err);
+          setPhotos(prev => {
+            const updated = prev.map(p => 
+              p.id === newPhoto.id 
+                ? { ...p, uploadStatus: 'error' as const } 
+                : p
+            );
+            localStorage.setItem('captured_photos', JSON.stringify(updated));
+            return updated;
+          });
+        });
+
+      return newPhoto;
+    } catch (err) {
+      console.error('Beautify error:', err);
+      toast.error('An error occurred during AI processing.');
+      return null;
+    } finally {
+      setIsBeautifying(false);
+    }
+  };
 
   // Trigger capture event
   const handleCapture = () => {
@@ -245,6 +329,16 @@ export default function Home() {
           spread: 50,
           origin: { y: 0.8 },
           colors: ['#ef4444', '#ffffff'],
+        });
+      }
+
+      // Automatically trigger AI beautification if enabled
+      if (autoBeautify) {
+        handleBeautify(newPhoto).then((beautifiedPhoto) => {
+          if (beautifiedPhoto) {
+            // Automatically open the gallery to show the result
+            setIsGalleryOpen(true);
+          }
         });
       }
     }
@@ -439,6 +533,23 @@ export default function Home() {
                   <Switch 
                     checked={autoCapture}
                     onCheckedChange={setAutoCapture}
+                  />
+                </div>
+
+                {/* Auto-AI Beautify toggle */}
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <span className="text-xs font-semibold block text-neutral-800">Auto-AI Beautify</span>
+                    <span className="text-[10px] text-neutral-500 block max-w-[220px]">
+                      Automatically send captured photos to AI to generate enhanced versions.
+                    </span>
+                  </div>
+                  <Switch 
+                    checked={autoBeautify}
+                    onCheckedChange={(checked) => {
+                      setAutoBeautify(checked);
+                      toast.success(checked ? 'Auto-AI Beautify enabled' : 'Auto-AI Beautify disabled');
+                    }}
                   />
                 </div>
 
@@ -789,42 +900,26 @@ export default function Home() {
             localStorage.setItem('captured_photos', JSON.stringify(updated));
             return updated;
           });
-
-          // Upload the beautified photo to R2 in the background
-          fetch('/api/upload', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ image: newPhoto.dataUrl })
-          })
-            .then(res => {
-              if (!res.ok) throw new Error('R2 upload failed');
-              return res.json();
-            })
-            .then(data => {
-              setPhotos(prev => {
-                const updated = prev.map(p => 
-                  p.id === newPhoto.id 
-                    ? { ...p, r2Url: data.publicUrl, uploadStatus: 'completed' as const } 
-                    : p
-                );
-                localStorage.setItem('captured_photos', JSON.stringify(updated));
-                return updated;
-              });
-            })
-            .catch(err => {
-              console.error('Failed to upload beautified image to R2:', err);
-              setPhotos(prev => {
-                const updated = prev.map(p => 
-                  p.id === newPhoto.id 
-                    ? { ...p, uploadStatus: 'error' as const } 
-                    : p
-                );
-                localStorage.setItem('captured_photos', JSON.stringify(updated));
-                return updated;
-              });
-            });
         }}
+        isBeautifying={isBeautifying}
+        onBeautify={handleBeautify}
       />
+
+      {/* AI Beautifying Loader Overlay */}
+      {isBeautifying && (
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center text-white gap-4 text-center">
+          <div className="relative flex items-center justify-center h-20 w-20">
+            <Sparkles className="h-10 w-10 text-amber-400 animate-pulse" />
+            <div className="absolute inset-0 border-4 border-amber-500/20 border-t-amber-400 rounded-full animate-spin" />
+          </div>
+          <div className="space-y-1 px-6">
+            <h3 className="font-bold text-sm tracking-widest text-amber-400 uppercase animate-pulse">AI is beautifying photo</h3>
+            <p className="text-xs text-neutral-400 max-w-xs leading-relaxed">
+              GPT-4o is analyzing composition and DALL-E 3 is re-rendering the scene. This will take 10-20 seconds...
+            </p>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
