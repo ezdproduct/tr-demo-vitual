@@ -920,35 +920,6 @@ export default function Home() {
           </div>
         </div>
       )}
-
-      {/* Landscape Orientation Enforcement Overlay */}
-      <div className="landscape-warning-overlay z-[9999] fixed inset-0 flex flex-col items-center justify-center bg-neutral-950 text-white p-6 text-center select-none">
-        <div className="bg-neutral-900 border border-neutral-800/40 rounded-3xl p-8 max-w-sm flex flex-col items-center gap-6 shadow-2xl backdrop-blur-md">
-          {/* Animated Rotate Phone Icon Container */}
-          <div className="relative flex items-center justify-center h-24 w-24 bg-neutral-800/40 rounded-full border border-neutral-700/30">
-            {/* Phone outline */}
-            <div className="relative h-14 w-8 border-2 border-neutral-300 rounded-lg flex items-center justify-center animate-phone-rotate">
-              {/* Home button / Screen detail */}
-              <div className="h-1 w-3 bg-neutral-400 rounded-full absolute bottom-1" />
-              {/* Camera sensor detail */}
-              <div className="h-1 w-1 bg-neutral-400 rounded-full absolute top-1" />
-            </div>
-            {/* Curved rotation arrow decoration */}
-            <div className="absolute inset-2 border border-dashed border-red-500/25 rounded-full animate-spin-slow pointer-events-none" />
-          </div>
-          <div className="space-y-2">
-            <h3 className="font-bold text-base tracking-widest text-red-500 uppercase">
-              Xoay ngang thiết bị
-            </h3>
-            <p className="text-sm font-semibold text-neutral-200">
-              Vui lòng xoay ngang màn hình của bạn để tiếp tục sử dụng ứng dụng.
-            </p>
-            <p className="text-xs text-neutral-400 leading-relaxed">
-              Please rotate your device to landscape mode to access the camera leveling dashboard.
-            </p>
-          </div>
-        </div>
-      </div>
     </main>
   );
 }
