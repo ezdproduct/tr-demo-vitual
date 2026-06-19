@@ -154,3 +154,27 @@
 .animate-spin-slow {
   animation: spin-slow 12s linear infinite;
 }
+
+/* Landscape-only enforcement overlay */
+.landscape-warning-overlay {
+  display: none;
+}
+
+@media (max-width: 1024px) and (orientation: portrait) {
+  .landscape-warning-overlay {
+    display: flex;
+  }
+}
+
+@keyframes phone-rotate {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(-90deg);
+  }
+}
+
+.animate-phone-rotate {
+  animation: phone-rotate 2s ease-in-out infinite;
+}
