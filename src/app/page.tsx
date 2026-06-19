@@ -73,7 +73,7 @@ export default function Home() {
   // App settings & features states
   const [levelMode, setLevelMode] = useState<'flat' | 'upright'>('flat');
   const [tolerance, setTolerance] = useState<number>(1.5);
-  const [lockShutter, setLockShutter] = useState<boolean>(true);
+  const [lockShutter, setLockShutter] = useState<boolean>(false);
   const [autoCapture, setAutoCapture] = useState<boolean>(false);
   const [beepEnabled, setBeepEnabled] = useState<boolean>(true);
   const [showGrid, setShowGrid] = useState<boolean>(true);

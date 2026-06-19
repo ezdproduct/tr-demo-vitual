@@ -173,8 +173,8 @@ export function LevelIndicator({
   // SVG parameters
   const viewSize = 300;
   const center = viewSize / 2;
-  const maxDegrees = 15; // Degrees represented by the outer boundary
-  const maxOffset = 80;  // Maximum offset in pixels
+  const maxDegrees = 10; // Degrees represented by the outer boundary
+  const maxOffset = 30;  // Maximum offset in pixels (keeps bubble inside outer circle)
 
   // Map degree deviation to pixel offset
   const getOffset = (deg: number) => {
@@ -267,81 +267,71 @@ export function LevelIndicator({
         </div>
       </div>
 
-      {/* SVG Leveler Overlay (Only for Upright mode, simplified) */}
-      {mode === 'upright' && (
-        <svg
-          width="100%"
-          height="100%"
-          viewBox={`0 0 ${viewSize} ${viewSize}`}
-          className="max-w-[320px] max-h-[320px] filter drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)] transition-all duration-300"
-        >
-          <defs>
-            <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="4" result="blur" />
-              <feComposite in="SourceGraphic" in2="blur" operator="over" />
-            </filter>
-          </defs>
+      {/* SVG Leveler Overlay (Unified, clean bubble level) */}
+      <svg
+        width="100%"
+        height="100%"
+        viewBox={`0 0 ${viewSize} ${viewSize}`}
+        className="max-w-[200px] max-h-[200px] absolute pointer-events-none filter drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)] transition-all duration-300 z-20"
+      >
+        <defs>
+          <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+          </filter>
+        </defs>
 
-          {/* === UPRIGHT HORIZON MODE === */}
-          <g>
-            {/* Static Horizon Reference Wings (Left and Right static ticks, center circle removed) */}
-            <line x1={center - 70} y1={center} x2={center - 25} y2={center} stroke={strokeColor} strokeWidth="2" />
-            <line x1={center + 25} y1={center} x2={center + 70} y2={center} stroke={strokeColor} strokeWidth="2" />
-            <line x1={center} y1={center - 25} x2={center} y2={center - 15} stroke={strokeColor} strokeWidth="1.5" />
-            
-            {/* Roll Angle Arc & Ticks at top (from -30 to +30 deg) */}
-            <path
-              d={`M ${center - 80} ${center - 80} A 113 113 0 0 1 ${center + 80} ${center - 80}`}
-              fill="none"
-              stroke="rgba(255, 255, 255, 0.15)"
-              strokeWidth="2"
-            />
-            {/* 0-degree top tick indicator */}
-            <polygon
-              points={`${center},${center - 85} ${center - 5},${center - 95} ${center + 5},${center - 95}`}
-              fill={strokeColor}
-              className="transition-colors duration-200"
-            />
+        {/* Crosshair guidelines */}
+        <line 
+          x1={center - 50} y1={center} 
+          x2={center + 50} y2={center} 
+          stroke={strokeColor} 
+          strokeWidth="1" 
+          strokeDasharray="2 3" 
+        />
+        <line 
+          x1={center} y1={center - 50} 
+          x2={center} y2={center + 50} 
+          stroke={strokeColor} 
+          strokeWidth="1" 
+          strokeDasharray="2 3" 
+        />
 
-            {/* Rotating & Translating Pitch / Roll Horizon Line */}
-            <g
-              transform={`translate(0, ${horizonYOffset}) rotate(${horizonRoll}, ${center}, ${center})`}
-              style={{
-                transition: 'transform 0.05s linear',
-              }}
-            >
-              {/* Dynamic horizon line */}
-              <line
-                x1={center - 110}
-                y1={center}
-                x2={center + 110}
-                y2={center}
-                stroke={activeColor}
-                strokeWidth={isAligned ? '3.5' : '2'}
-                filter={isAligned ? 'url(#glow)' : undefined}
-                className="transition-all duration-200"
-              />
-              
-              {/* Pitch Ladder (marks at +5 and +10 degrees) */}
-              {/* +5 degrees bar */}
-              <path
-                d={`M ${center - 25} ${center - 25} L ${center - 25} ${center - 20} M ${center - 25} ${center - 25} L ${center + 25} ${center - 25} M ${center + 25} ${center - 25} L ${center + 25} ${center - 20}`}
-                fill="none"
-                stroke={activeColor}
-                strokeWidth="1.5"
-                className="opacity-40"
-              />
-              {/* -5 degrees bar */}
-              <path
-                d={`M ${center - 25} ${center + 25} L ${center - 25} ${center + 20} M ${center - 25} ${center + 25} L ${center + 25} ${center + 25} M ${center + 25} ${center + 25} L ${center + 25} ${center + 20}`}
-                fill="none"
-                stroke={activeColor}
-                strokeWidth="1.5"
-                className="opacity-40"
-              />
-            </g>
-          </g>
-        </svg>
-      )}    </div>
+        {/* Outer target boundary circle */}
+        <circle
+          cx={center}
+          cy={center}
+          r={35}
+          fill="none"
+          stroke={strokeColor}
+          strokeWidth="1.5"
+          className="transition-colors duration-300"
+        />
+
+        {/* Center alignment target circle (small) */}
+        <circle
+          cx={center}
+          cy={center}
+          r={8}
+          fill="none"
+          stroke={strokeColor}
+          strokeWidth="1.5"
+          className="transition-colors duration-300"
+        />
+
+        {/* Dynamic moving bubble Level */}
+        <circle
+          cx={bubbleX}
+          cy={bubbleY}
+          r={6}
+          fill={activeColor}
+          filter={isAligned ? 'url(#glow)' : undefined}
+          style={{
+            transition: 'transform 0.05s linear',
+          }}
+          className="transition-all duration-200"
+        />
+      </svg>
+    </div>
   );
 }
