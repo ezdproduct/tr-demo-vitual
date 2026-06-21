@@ -13,32 +13,66 @@ import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
 import confetti from 'canvas-confetti';
 import { 
-  Camera, 
   RotateCcw, 
   Sparkles, 
-  Volume2, 
-  VolumeX, 
-  Grid, 
   Lock, 
-  Unlock, 
   Laptop, 
   Compass,
-  CheckCircle2,
   AlertCircle,
-  HelpCircle,
-  ChevronLeft,
-  ChevronRight,
-  ArrowLeft,
-  ArrowRight,
-  Download
+  Download,
+  Upload
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 
 const GUIDE_IMAGES = [
   'https://cdn.shopify.com/s/files/1/0671/2793/5072/files/hcm-square.png?v=1781757878',
   'https://cdn.shopify.com/s/files/1/0671/2793/5072/files/hcm-dinning_set_3.0-_American_Mahogany.png?v=1781758068'
+];
+
+const PRODUCTS = [
+  {
+    id: 0,
+    name: 'Bàn gỗ vuông',
+    collection: 'HCM SERIES',
+    price: '$129.00',
+    url: 'https://cdn.shopify.com/s/files/1/0671/2793/5072/files/hcm-square.png?v=1781757878'
+  },
+  {
+    id: 1,
+    name: 'Bộ bàn ăn cao cấp',
+    collection: 'MAHOGANY SERIES',
+    price: '$599.00',
+    url: 'https://cdn.shopify.com/s/files/1/0671/2793/5072/files/hcm-dinning_set_3.0-_American_Mahogany.png?v=1781758068'
+  },
+  {
+    id: 2,
+    name: 'Sofa góc L hiện đại',
+    collection: 'NORDIC SERIES',
+    price: '$849.00',
+    url: 'https://cdn.shopify.com/s/files/1/0671/2793/5072/files/hcm-square.png?v=1781757878'
+  },
+  {
+    id: 3,
+    name: 'Tủ sách treo tường',
+    collection: 'MINIMAL SERIES',
+    price: '$249.00',
+    url: 'https://cdn.shopify.com/s/files/1/0671/2793/5072/files/hcm-dinning_set_3.0-_American_Mahogany.png?v=1781758068'
+  },
+  {
+    id: 4,
+    name: 'Đèn thả trần Decor',
+    collection: 'LIGHT SERIES',
+    price: '$189.00',
+    url: 'https://cdn.shopify.com/s/files/1/0671/2793/5072/files/hcm-square.png?v=1781757878'
+  },
+  {
+    id: 5,
+    name: 'Giường ngủ king size',
+    collection: 'BEDROOM SERIES',
+    price: '$1,299.00',
+    url: 'https://cdn.shopify.com/s/files/1/0671/2793/5072/files/hcm-dinning_set_3.0-_American_Mahogany.png?v=1781758068'
+  }
 ];
 
 export default function Home() {
@@ -68,16 +102,32 @@ export default function Home() {
   const [beepEnabled, setBeepEnabled] = useState<boolean>(true);
   const [showGrid, setShowGrid] = useState<boolean>(true);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
+  
+  // Positioning and arrangement states
   const [imageScale, setImageScale] = useState<number>(0.65);
   const [activeGuideIndex, setActiveGuideIndex] = useState<number>(0);
-  const [isBeautifying, setIsBeautifying] = useState<boolean>(false);
+  const [furniturePos, setFurniturePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+
+  // Drag and pinch gestures state mapping
+  const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const furniturePosRef = useRef({ x: 0, y: 0 });
+  furniturePosRef.current = furniturePos;
+  const pointersRef = useRef<Map<number, PointerEvent>>(new Map());
+  const initialPinchRef = useRef<{ dist: number; scale: number } | null>(null);
   
   // Alignment & Capture states
   const [isAligned, setIsAligned] = useState<boolean>(false);
+  const [roomPhoto, setRoomPhoto] = useState<string | null>(null);
   const [aiPhoto, setAiPhoto] = useState<string | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [flashActive, setFlashActive] = useState<boolean>(false);
+  const [isBeautifying, setIsBeautifying] = useState<boolean>(false);
   const [autoCaptureTimer, setAutoCaptureTimer] = useState<number | null>(null); // countdown progress
+  const [isDrawerExpanded, setIsDrawerExpanded] = useState<boolean>(true);
+
+  // Computed phase state
+  const phase = aiPhoto ? 'result' : (roomPhoto ? 'arrange' : 'capture');
 
   // Track calibration status
   const isCalibrated = calibration.beta !== 0 || calibration.gamma !== 0;
@@ -97,21 +147,21 @@ export default function Home() {
   // Play audio ping when entering aligned zone
   useEffect(() => {
     if (isAligned && !wasAlignedRef.current) {
-      if (beepEnabled) {
+      if (beepEnabled && phase === 'capture') {
         playAlignmentPing();
       }
       wasAlignedRef.current = true;
     } else if (!isAligned) {
       wasAlignedRef.current = false;
     }
-  }, [isAligned, beepEnabled]);
+  }, [isAligned, beepEnabled, phase]);
 
   // Handle Auto-Capture logic
   useEffect(() => {
     let countdownInterval: NodeJS.Timeout;
     let captureTimeout: NodeJS.Timeout;
 
-    if (autoCapture && isAligned && !cameraError) {
+    if (autoCapture && isAligned && !cameraError && phase === 'capture') {
       // Start a 1s stability timer
       const startTime = Date.now();
       const targetTime = startTime + 1000;
@@ -137,10 +187,79 @@ export default function Home() {
       clearInterval(countdownInterval);
       clearTimeout(captureTimeout);
     };
-  }, [isAligned, autoCapture, cameraError]);
+  }, [isAligned, autoCapture, cameraError, phase]);
+
+  // Pointer drag gestures
+  const handleFurniturePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 && e.pointerType !== 'touch') return;
+    const target = e.currentTarget;
+    target.setPointerCapture(e.pointerId);
+    
+    pointersRef.current.set(e.pointerId, e.nativeEvent);
+    
+    if (pointersRef.current.size === 1) {
+      setIsDragging(true);
+      dragStartRef.current = {
+        x: e.clientX - furniturePosRef.current.x,
+        y: e.clientY - furniturePosRef.current.y
+      };
+    } else if (pointersRef.current.size === 2) {
+      setIsDragging(false);
+      const pts = Array.from(pointersRef.current.values());
+      const dist = Math.hypot(pts[0].clientX - pts[1].clientX, pts[0].clientY - pts[1].clientY);
+      initialPinchRef.current = { dist, scale: imageScale };
+    }
+  };
+
+  const handleFurniturePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (pointersRef.current.has(e.pointerId)) {
+      pointersRef.current.set(e.pointerId, e.nativeEvent);
+    }
+
+    if (pointersRef.current.size === 1 && isDragging) {
+      const newX = e.clientX - dragStartRef.current.x;
+      const newY = e.clientY - dragStartRef.current.y;
+      setFurniturePos({ x: newX, y: newY });
+    } else if (pointersRef.current.size === 2 && initialPinchRef.current) {
+      const pts = Array.from(pointersRef.current.values());
+      const dist = Math.hypot(pts[0].clientX - pts[1].clientX, pts[0].clientY - pts[1].clientY);
+      if (initialPinchRef.current.dist > 10) {
+        const factor = dist / initialPinchRef.current.dist;
+        const newScale = initialPinchRef.current.scale * factor;
+        setImageScale(Math.max(0.15, Math.min(3.0, newScale)));
+      }
+    }
+  };
+
+  const handleFurniturePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    pointersRef.current.delete(e.pointerId);
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch (err) {}
+    
+    if (pointersRef.current.size === 0) {
+      setIsDragging(false);
+      initialPinchRef.current = null;
+    } else if (pointersRef.current.size === 1) {
+      const remainingId = Array.from(pointersRef.current.keys())[0];
+      const remainingEvent = pointersRef.current.get(remainingId);
+      if (remainingEvent) {
+        dragStartRef.current = {
+          x: remainingEvent.clientX - furniturePosRef.current.x,
+          y: remainingEvent.clientY - furniturePosRef.current.y
+        };
+        setIsDragging(true);
+      }
+      initialPinchRef.current = null;
+    }
+  };
+
+  const handleFurnitureWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const delta = e.deltaY < 0 ? 0.05 : -0.05;
+    setImageScale(prev => Math.max(0.15, Math.min(3.0, prev + delta)));
+  };
 
   const handleBeautify = async (originalDataUrl: string): Promise<string | null> => {
-    setIsBeautifying(true);
     try {
       const res = await fetch('/api/beautify', {
         method: 'POST',
@@ -166,12 +285,36 @@ export default function Home() {
       console.error('Beautify error:', err);
       toast.error('An error occurred during AI processing.');
       return null;
-    } finally {
-      setIsBeautifying(false);
     }
   };
 
-  // Trigger capture event
+  // Handle image upload from library
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Vui lòng chọn tệp hình ảnh hợp lệ!');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (dataUrl) {
+        setRoomPhoto(dataUrl);
+        setFurniturePos({ x: 0, y: 0 }); // reset layout offsets
+        setImageScale(0.65); // reset scale
+        toast.success('Đã tải ảnh phòng lên thành công!');
+      }
+    };
+    reader.onerror = () => {
+      toast.error('Lỗi khi đọc file ảnh!');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Trigger capture event (captures raw room photo only)
   const handleCapture = () => {
     if (lockShutter && !isAligned) {
       toast.error('Please level the device before capturing!');
@@ -190,9 +333,8 @@ export default function Home() {
     // Play synthesized mechanical camera shutter click
     playCameraShutter();
 
-    // Grab frame from canvas (merging camera background and guide image overlay)
-    const guideImageEl = document.getElementById('furniture-guide-image') as HTMLImageElement | null;
-    const dataUrl = cameraRef.current.capture(guideImageEl);
+    // Grab raw room frame from camera canvas
+    const dataUrl = cameraRef.current.capture(null);
     if (dataUrl) {
       if (isAligned) {
         confetti({
@@ -202,13 +344,95 @@ export default function Home() {
           colors: ['#ef4444', '#ffffff'],
         });
       }
+      setRoomPhoto(dataUrl);
+      setFurniturePos({ x: 0, y: 0 }); // reset drag offset to center
+      setImageScale(0.65); // reset scale
+    }
+  };
 
-      // Immediately trigger AI beautification
-      handleBeautify(dataUrl).then((beautifiedPhoto) => {
-        if (beautifiedPhoto) {
-          setAiPhoto(beautifiedPhoto);
-        }
+  // Compose static room photo and draggable overlay onto final canvas for AI processing
+  const handleRenderAI = async () => {
+    if (!roomPhoto) {
+      toast.error('No room capture photo found!');
+      return;
+    }
+
+    setIsBeautifying(true);
+    
+    try {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Could not create off-screen 2D canvas context');
+
+      // Load background roomPhoto image
+      const bgImg = new Image();
+      bgImg.src = roomPhoto;
+      await new Promise((resolve, reject) => {
+        bgImg.onload = resolve;
+        bgImg.onerror = reject;
       });
+
+      canvas.width = bgImg.naturalWidth;
+      canvas.height = bgImg.naturalHeight;
+
+      // Draw background roomPhoto on canvas
+      ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+
+      // Draw furniture overlay guide image if available
+      const guideImgEl = document.getElementById('furniture-guide-image') as HTMLImageElement | null;
+      const bgImgEl = document.getElementById('arrange-bg-image') as HTMLImageElement | null;
+
+      if (guideImgEl && bgImgEl) {
+        const bgRect = bgImgEl.getBoundingClientRect();
+        const imgRect = guideImgEl.getBoundingClientRect();
+
+        const vw = bgImg.naturalWidth;
+        const vh = bgImg.naturalHeight;
+        const sw = bgRect.width;
+        const sh = bgRect.height;
+
+        // object-cover scaling factor
+        const actualScale = Math.max(sw / vw, sh / vh);
+
+        // Displayed background dimensions on screen
+        const displayedWidth = vw * actualScale;
+        const displayedHeight = vh * actualScale;
+
+        // Offset of the displayed background relative to its container
+        const dx = (sw - displayedWidth) / 2;
+        const dy = (sh - displayedHeight) / 2;
+
+        // Bounding rect of guide image relative to the background container
+        const relativeLeft = imgRect.left - bgRect.left;
+        const relativeTop = imgRect.top - bgRect.top;
+
+        // Map screen coordinates of the guide image to natural background coordinates
+        const imgX = (relativeLeft - dx) / actualScale;
+        const imgY = (relativeTop - dy) / actualScale;
+        const imgW = imgRect.width / actualScale;
+        const imgH = imgRect.height / actualScale;
+
+        const computedStyle = window.getComputedStyle(guideImgEl);
+        const opacity = parseFloat(computedStyle.opacity) || 1.0;
+
+        ctx.save();
+        ctx.globalAlpha = opacity;
+        ctx.drawImage(guideImgEl, imgX, imgY, imgW, imgH);
+        ctx.restore();
+      }
+
+      const mergedDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+
+      // Trigger AI beautification
+      const beautifiedPhoto = await handleBeautify(mergedDataUrl);
+      if (beautifiedPhoto) {
+        setAiPhoto(beautifiedPhoto);
+      }
+    } catch (err) {
+      console.error('Error combining images on canvas:', err);
+      toast.error('An error occurred during canvas compilation.');
+    } finally {
+      setIsBeautifying(false);
     }
   };
 
@@ -252,10 +476,9 @@ export default function Home() {
         <div className="absolute inset-0 bg-white z-40 transition-opacity duration-75 animate-flash" />
       )}
 
-      {/* If AI Photo is generated, show the single download/retake screen */}
-      {aiPhoto ? (
+      {/* 1. RESULT PHASE SCREEN */}
+      {phase === 'result' && aiPhoto && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-950 z-30 p-4">
-          {/* Generated image preview */}
           <div className="relative max-w-full max-h-[75dvh] aspect-auto rounded-lg overflow-hidden border border-neutral-800 shadow-2xl">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img 
@@ -265,10 +488,13 @@ export default function Home() {
             />
           </div>
 
-          {/* Actions Bar */}
+          {/* Result Actions Bar */}
           <div className="mt-6 flex gap-4 w-full max-w-md px-4">
             <Button
-              onClick={() => setAiPhoto(null)}
+              onClick={() => {
+                setAiPhoto(null);
+                setRoomPhoto(null);
+              }}
               variant="outline"
               className="flex-1 bg-neutral-900 border-neutral-800 hover:bg-neutral-800 text-white font-bold h-12 text-sm rounded-full cursor-pointer"
             >
@@ -284,7 +510,138 @@ export default function Home() {
             </Button>
           </div>
         </div>
-      ) : (
+      )}
+
+      {/* 2. ARRANGE PHASE SCREEN */}
+      {phase === 'arrange' && roomPhoto && (
+        <div className="absolute inset-0 w-full h-full z-0 overflow-hidden bg-neutral-950 flex items-center justify-center">
+          {/* Room Photo background overlay */}
+          <img 
+            id="arrange-bg-image"
+            src={roomPhoto}
+            className="w-full h-full object-cover select-none pointer-events-none"
+            alt="Captured room background"
+          />
+
+          {/* Draggable & scalable furniture overlay block */}
+          <div
+            onPointerDown={handleFurniturePointerDown}
+            onPointerMove={handleFurniturePointerMove}
+            onPointerUp={handleFurniturePointerUp}
+            onPointerCancel={handleFurniturePointerUp}
+            onWheel={handleFurnitureWheel}
+            className="absolute select-none pointer-events-auto touch-none cursor-move flex items-center justify-center"
+            style={{
+              left: '50%',
+              top: '50%',
+              width: '280px',
+              height: '175px',
+              transform: `translate(calc(-50% + ${furniturePos.x}px), calc(-50% + ${furniturePos.y}px))`,
+              zIndex: 10,
+            }}
+          >
+            {/* Furniture overlay silhouette */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img 
+              id="furniture-guide-image"
+              crossOrigin="anonymous"
+              src={GUIDE_IMAGES[activeGuideIndex]} 
+              alt="Draggable layout guide" 
+              style={{ width: `${imageScale * 100}%` }}
+              className="h-auto aspect-square object-contain opacity-85 filter drop-shadow-[0_0_12px_rgba(239,68,68,0.4)] select-none pointer-events-none"
+            />
+          </div>
+
+          {/* Bottom Dock Control containing catalog and scale sliders */}
+          <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black via-black/95 to-transparent pt-16 pb-4 z-20 flex flex-col gap-3 pointer-events-auto">
+            {/* Premium product catalog panel */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between px-5">
+                <span className="text-[10px] font-bold text-white/40 tracking-[0.2em] uppercase">Chọn sản phẩm</span>
+                <span className="text-[10px] text-white/30">{PRODUCTS.length} sản phẩm</span>
+              </div>
+              <div className="flex gap-3 overflow-x-auto py-1 px-5 no-scrollbar">
+                {PRODUCTS.map((product) => {
+                  const guideIdx = product.id % GUIDE_IMAGES.length;
+                  return (
+                    <button
+                      key={product.id}
+                      onClick={() => {
+                        setActiveGuideIndex(guideIdx);
+                        setFurniturePos({ x: 0, y: 0 });
+                        toast.success(`Đã chọn: ${product.name}`);
+                      }}
+                      className={`flex-shrink-0 flex flex-col rounded-2xl border overflow-hidden transition-all duration-300 ${
+                        activeGuideIndex === guideIdx && product.id < 2
+                          ? 'border-red-500 shadow-[0_0_16px_rgba(239,68,68,0.35)] scale-[1.03]'
+                          : 'border-white/10 hover:border-white/25 hover:scale-[1.02]'
+                      }`}
+                      style={{ width: '130px', background: 'rgba(20,20,22,0.92)' }}
+                    >
+                      {/* Product image */}
+                      <div className="relative w-full h-[88px] bg-neutral-900 overflow-hidden">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={product.url}
+                          alt={product.name}
+                          className="w-full h-full object-cover"
+                        />
+                        {activeGuideIndex === guideIdx && product.id < 2 && (
+                          <div className="absolute top-1.5 right-1.5 bg-red-500 rounded-full w-4 h-4 flex items-center justify-center">
+                            <div className="w-2 h-2 bg-white rounded-full" />
+                          </div>
+                        )}
+                      </div>
+                      {/* Product info */}
+                      <div className="flex flex-col px-2.5 pt-2 pb-2.5 gap-0.5 text-left">
+                        <span className="text-[8px] font-bold tracking-[0.15em] text-red-400/80 uppercase truncate">{product.collection}</span>
+                        <span className="text-[11px] font-semibold text-white leading-tight line-clamp-2">{product.name}</span>
+                        <span className="text-[11px] font-bold text-white/70 mt-0.5">{product.price}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Horizontal Scale Zoom control */}
+            <div className="flex items-center gap-3 bg-black/75 backdrop-blur border border-white/10 px-4 py-2 rounded-full max-w-sm mx-auto w-full">
+              <span className="text-[9px] font-bold text-white/50 tracking-wider uppercase select-none">TỶ LỆ</span>
+              <Slider
+                min={0.15}
+                max={3.0}
+                step={0.01}
+                value={[imageScale]}
+                onValueChange={(val) => setImageScale(Array.isArray(val) ? val[0] : val)}
+                className="flex-1"
+              />
+              <span className="text-[9px] font-mono text-red-500 font-bold w-10 text-right select-none">{Math.round(imageScale * 100)}%</span>
+            </div>
+
+            {/* Action panel triggers */}
+            <div className="flex gap-4 max-w-md mx-auto w-full mt-2">
+              <Button
+                onClick={() => setRoomPhoto(null)}
+                variant="outline"
+                className="flex-1 bg-neutral-900 border-neutral-800 hover:bg-neutral-855 text-white font-bold h-12 text-sm rounded-full cursor-pointer"
+              >
+                <RotateCcw className="h-4 w-4 mr-2" />
+                Chụp lại (Retake)
+              </Button>
+              <Button
+                onClick={handleRenderAI}
+                className="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold h-12 text-sm rounded-full shadow-[0_0_15px_rgba(239,68,68,0.3)] cursor-pointer"
+              >
+                <Sparkles className="h-4 w-4 mr-2" />
+                Tạo thiết kế AI
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. CAPTURE PHASE SCREEN */}
+      {phase === 'capture' && (
         <>
           {/* Camera Viewfinder layer */}
           <div className="absolute inset-0 w-full h-full z-0">
@@ -292,7 +649,7 @@ export default function Home() {
               ref={cameraRef}
               facingMode={facingMode}
               isActive={true}
-              onCapture={() => {}} // Done in parent with return value
+              onCapture={() => {}} 
               onError={(msg) => setCameraError(msg)}
             />
           </div>
@@ -307,11 +664,6 @@ export default function Home() {
               tolerance={tolerance}
               onAlignmentChange={setIsAligned}
               showGrid={showGrid}
-              imageScale={imageScale}
-              onImageScaleChange={setImageScale}
-              guideImages={GUIDE_IMAGES}
-              activeGuideIndex={activeGuideIndex}
-              onActiveGuideIndexChange={setActiveGuideIndex}
             />
           )}
 
@@ -419,57 +771,28 @@ export default function Home() {
 
           {/* Shutter Control dock at bottom */}
           <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 to-transparent pt-12 pb-6 px-6 min-h-[140px] z-20 pointer-events-none">
-            {/* Center: Controls Stack (HUD Panel -> Shutter & Arrows) */}
-            <div className="absolute left-1/2 -translate-x-1/2 bottom-6 flex flex-col items-center gap-3 pointer-events-auto w-[90vw] max-w-[420px]">
-              {/* Row 1: Symmetrical Alignment Stats and Horizontal Zoom Side-by-Side */}
-              <div className="flex flex-wrap justify-center items-center gap-2 select-none w-full">
-                {/* Numeric degrees display */}
-                <div className="whitespace-nowrap bg-black/75 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 text-[10px] font-bold font-mono text-white/95 flex gap-2 shadow-lg">
-                  <div className="flex items-center gap-1">
-                    <span className="text-white/40">PITCH:</span>
-                    <span className={isAligned ? 'text-red-500 font-bold' : 'text-white'}>
-                      {devBeta > 0 ? '+' : ''}{devBeta.toFixed(1)}°
-                    </span>
-                  </div>
-                  <div className="w-px h-3 bg-white/20 my-auto" />
-                  <div className="flex items-center gap-1">
-                    <span className="text-white/40">ROLL:</span>
-                    <span className={isAligned ? 'text-red-500 font-bold' : 'text-white'}>
-                      {devGamma > 0 ? '+' : ''}{devGamma.toFixed(1)}°
-                    </span>
-                  </div>
-                </div>
-
-                {/* Horizontal Zoom Slider */}
-                <div className="flex items-center gap-2 bg-black/75 backdrop-blur-md border border-white/10 px-3 py-1.5 rounded-full shadow-lg w-40 h-8">
-                  <span className="text-[8px] font-bold text-white/50 tracking-wider select-none uppercase">ZOOM</span>
-                  <Slider
-                    min={0.15}
-                    max={3.0}
-                    step={0.01}
-                    value={[imageScale]}
-                    onValueChange={(val) => setImageScale(Array.isArray(val) ? val[0] : val)}
-                    className="flex-1 w-20"
+            <div className="absolute left-1/2 -translate-x-1/2 bottom-6 flex flex-col items-center gap-4 pointer-events-auto w-[90vw] max-w-[360px]">
+              
+              <div className="flex items-center justify-between w-full">
+                {/* Left: Upload Image Button */}
+                <div className="w-14 h-14 flex items-center justify-center">
+                  <input
+                    type="file"
+                    id="room-image-upload"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleImageUpload}
                   />
-                  <span className="text-[8px] font-mono text-red-500 font-bold w-8 text-right select-none">{Math.round(imageScale * 100)}%</span>
+                  <Button
+                    size="icon"
+                    onClick={() => document.getElementById('room-image-upload')?.click()}
+                    className="h-12 w-12 rounded-full bg-neutral-900/80 hover:bg-neutral-800 border border-white/10 text-white shadow-lg transition-transform active:scale-95 cursor-pointer"
+                  >
+                    <Upload className="h-5 w-5" />
+                  </Button>
                 </div>
-              </div>
 
-              {/* Row 2: Navigation Arrows & Shutter button */}
-              <div className="flex items-center gap-4">
-                {/* Arrow Left (Previous Guide) */}
-                <Button
-                  size="icon"
-                  onClick={() => {
-                    const prevIndex = (activeGuideIndex - 1 + GUIDE_IMAGES.length) % GUIDE_IMAGES.length;
-                    setActiveGuideIndex(prevIndex);
-                  }}
-                  className="h-10 w-10 rounded-full bg-neutral-900/80 hover:bg-neutral-855 border border-white/10 text-white shadow-lg transition-transform active:scale-95 pointer-events-auto"
-                >
-                  <ArrowLeft className="h-5 w-5 text-white" strokeWidth={2.5} />
-                </Button>
-
-                {/* Shutter Button Wrapper */}
+                {/* Center: Shutter Button */}
                 <div className="relative flex items-center justify-center">
                   <button
                     onClick={handleCapture}
@@ -496,30 +819,19 @@ export default function Home() {
                   </button>
                 </div>
 
-                {/* Arrow Right (Next Guide) */}
-                <Button
-                  size="icon"
-                  onClick={() => {
-                    const nextIndex = (activeGuideIndex + 1) % GUIDE_IMAGES.length;
-                    setActiveGuideIndex(nextIndex);
-                  }}
-                  className="h-10 w-10 rounded-full bg-neutral-900/80 hover:bg-neutral-855 border border-white/10 text-white shadow-lg transition-transform active:scale-95 pointer-events-auto"
-                >
-                  <ArrowRight className="h-5 w-5 text-white" strokeWidth={2.5} />
-                </Button>
+                {/* Right: Toggle Front/Rear Camera */}
+                <div className="w-14 h-14 flex items-center justify-center">
+                  <Button
+                    size="icon"
+                    onClick={handleToggleCamera}
+                    disabled={isSimulated || !!cameraError}
+                    className="h-12 w-12 rounded-full bg-neutral-900/80 hover:bg-neutral-800 border border-white/10 text-white shadow-lg transition-transform active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <RotateCcw className="h-5 w-5 rotate-45" />
+                  </Button>
+                </div>
               </div>
-            </div>
 
-            {/* Right Side: Toggle Front/Rear Camera */}
-            <div className="absolute right-6 bottom-6 w-14 h-14 flex items-center justify-center pointer-events-auto">
-              <Button
-                size="icon"
-                onClick={handleToggleCamera}
-                disabled={isSimulated || !!cameraError}
-                className="h-12 w-12 rounded-full bg-neutral-900 hover:bg-neutral-855 border border-white/10 text-white shadow-lg transition-transform active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <RotateCcw className="h-5 w-5 rotate-45" />
-              </Button>
             </div>
           </div>
         </>
